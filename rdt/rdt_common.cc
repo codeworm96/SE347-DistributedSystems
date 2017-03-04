@@ -14,11 +14,13 @@ unsigned int crc32(const packet & pack)
     for (int i = RDT_PKTSIZE - 5; i >= 0; --i) {
         unsigned char t = pack.data[i];
         for (int j = 0; j < 8; ++j) {
-            res = (res << 1) + ((t & 0x80) >> 7);
-            t <<= 1;
-            if (res >= crc32_magic) {
-                res ^= crc32_magic;
+            if ((int)(res ^ t) < 0) {
+                res = (res << 1) ^ crc32_magic;
             }
+            else {
+                res = res << 1;
+            }
+            t <<= 1;
         }
     }
     return res;

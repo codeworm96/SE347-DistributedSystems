@@ -28,7 +28,7 @@ static unsigned int expect_seq;
 void Receiver_Init()
 {
     fprintf(stdout, "At %.2fs: receiver initializing ...\n", GetSimulationTime());
-    expect_seq = 0;
+    expect_seq = 1;
 }
 
 /* receiver finalization, called once at the very end.
@@ -44,27 +44,44 @@ void Receiver_Final()
    receiver */
 void Receiver_FromLowerLayer(struct packet *pkt)
 {
-    if (crc32(*pkt) == 0) { // ignore corrupted packets
+    //   if (crc32(*pkt) == 0) { // ignore corrupted packets
         unsigned int seq = *(unsigned int *)(pkt->data + 4);
+        fprintf(stdout, "received %d, expect %d\n", seq, expect_seq);
         if (seq == expect_seq) { // Go Back To N
             ++expect_seq;
             /* construct a message and deliver to the upper layer */
-            int header_size = 9;
-            message *msg = new message;
+            message *msg = (message *)malloc(sizeof(message));
             ASSERT(msg!=NULL);
             msg->size = pkt->data[8];
-            msg->data = new char[msg->size];
+            msg->data = (char *)malloc(sizeof(char) * msg->size);
             ASSERT(msg->data!=NULL);
             memcpy(msg->data, pkt->data+header_size, msg->size);
             Receiver_ToUpperLayer(msg);
             /* don't forget to free the space */
-            if (msg->data!=NULL) delete [] msg->data;
-            if (msg!=NULL) delete msg;
+            if (msg->data!=NULL) free(msg->data);
+            if (msg!=NULL) free(msg);
             /* ack */
-            packet *ack = new packet;
-            *(unsigned int *)ack->data = seq;
+            packet *ack = (packet *)malloc(sizeof(packet));
+            memset(ack, 0, sizeof(packet));
+            *(unsigned int *)(ack->data + 4) = seq;
+            unsigned int crc = crc32(*ack);
+            *(unsigned int *)ack->data = crc;
             Receiver_ToLowerLayer(ack);
-            delete ack;
+            free(ack);
         }
+        else if (seq < expect_seq) { // ack is missing
+            packet *ack = (packet *)malloc(sizeof(packet));
+            memset(ack, 0, sizeof(packet));
+            *(unsigned int *)(ack->data + 4) = expect_seq - 1;
+            unsigned int crc = crc32(*ack);
+            *(unsigned int *)ack->data = crc;
+            Receiver_ToLowerLayer(ack);
+            free(ack);
+        }
+        /*
     }
+    else {
+    fprintf(stdout, "Corrupted packet\n");
+    }
+        */
 }
