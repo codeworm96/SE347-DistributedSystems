@@ -6,8 +6,8 @@
  *       situations.  In this implementation, the packet format is laid out as 
  *       the following:
  *       
- *       |<-  1 byte  ->|<-             the rest            ->|
- *       | payload size |<-             payload             ->|
+ *       |<-  4 byte  ->|<- 4 byte ->|<- 1 byte ->|<-             the rest            ->|
+ *       |<-  CRC32   ->|<-   seq  ->|<-  size  ->|<-             payload             ->|
  *
  *       The first byte of each packet indicates the size of the payload
  *       (excluding this single-byte header)
@@ -20,12 +20,15 @@
 
 #include "rdt_struct.h"
 #include "rdt_receiver.h"
+#include "rdt_common.h"
 
+static unsigned int expect_seq;
 
 /* receiver initialization, called once at the very beginning */
 void Receiver_Init()
 {
     fprintf(stdout, "At %.2fs: receiver initializing ...\n", GetSimulationTime());
+    expect_seq = 0;
 }
 
 /* receiver finalization, called once at the very end.
@@ -41,25 +44,27 @@ void Receiver_Final()
    receiver */
 void Receiver_FromLowerLayer(struct packet *pkt)
 {
-    /* 1-byte header indicating the size of the payload */
-    int header_size = 1;
-
-    /* construct a message and deliver to the upper layer */
-    struct message *msg = (struct message*) malloc(sizeof(struct message));
-    ASSERT(msg!=NULL);
-
-    msg->size = pkt->data[0];
-
-    /* sanity check in case the packet is corrupted */
-    if (msg->size<0) msg->size=0;
-    if (msg->size>RDT_PKTSIZE-header_size) msg->size=RDT_PKTSIZE-header_size;
-
-    msg->data = (char*) malloc(msg->size);
-    ASSERT(msg->data!=NULL);
-    memcpy(msg->data, pkt->data+header_size, msg->size);
-    Receiver_ToUpperLayer(msg);
-
-    /* don't forget to free the space */
-    if (msg->data!=NULL) free(msg->data);
-    if (msg!=NULL) free(msg);
+    if (crc32(*pkt) == 0) { // ignore corrupted packets
+        unsigned int seq = *(unsigned int *)(pkt->data + 4);
+        if (seq == expect_seq) { // Go Back To N
+            ++expect_seq;
+            /* construct a message and deliver to the upper layer */
+            int header_size = 9;
+            message *msg = new message;
+            ASSERT(msg!=NULL);
+            msg->size = pkt->data[8];
+            msg->data = new char[msg->size];
+            ASSERT(msg->data!=NULL);
+            memcpy(msg->data, pkt->data+header_size, msg->size);
+            Receiver_ToUpperLayer(msg);
+            /* don't forget to free the space */
+            if (msg->data!=NULL) delete [] msg->data;
+            if (msg!=NULL) delete msg;
+            /* ack */
+            packet *ack = new packet;
+            *(unsigned int *)ack->data = seq;
+            Receiver_ToLowerLayer(ack);
+            delete ack;
+        }
+    }
 }
