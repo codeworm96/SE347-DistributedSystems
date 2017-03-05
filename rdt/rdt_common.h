@@ -11,6 +11,6 @@
 const unsigned int header_size = 9;
 const unsigned int window_size = 10;
 const double timeout = 0.3;
-unsigned int crc32(const packet & pack);
+unsigned int crc32(char *data, unsigned int len);
 
 #endif /* _RDT_COMMON_H_ */

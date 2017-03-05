@@ -8,20 +8,18 @@
 
 const unsigned int crc32_magic = 0x04C11DB7;
 
-unsigned int crc32(const packet & pack)
+/* calculates crc32 with some math magic */
+unsigned int crc32(char *data, unsigned int len)
 {
-    unsigned int res = *(unsigned int *)(pack.data + (RDT_PKTSIZE - 4));
-    for (int i = RDT_PKTSIZE - 5; i >= 0; --i) {
-        unsigned char t = pack.data[i];
+    unsigned char byte;
+    unsigned int res, mask;
+    for (unsigned int i = 0; i < len; ++i) {
+        byte = data[i];
+        res = res ^ byte;
         for (int j = 0; j < 8; ++j) {
-            if ((int)(res ^ t) < 0) {
-                res = (res << 1) ^ crc32_magic;
-            }
-            else {
-                res = res << 1;
-            }
-            t <<= 1;
+            mask = -(res & 1);
+            res = (res >> 1) ^ (crc32_magic & mask);
         }
     }
-    return res;
+    return ~res;
 }

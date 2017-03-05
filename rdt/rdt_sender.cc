@@ -70,7 +70,7 @@ packet* create_packet()
         res->data[8] = off - header_size;
         *(unsigned int *)(res->data + 4) = seq;
         ++seq;
-        unsigned int crc = crc32(*res);
+        unsigned int crc = crc32(res->data + 4, RDT_PKTSIZE - 4);
         *(unsigned int *)res->data = crc;
         return res;
     }
@@ -155,7 +155,7 @@ void Sender_FromUpperLayer(struct message *msg)
    sender */
 void Sender_FromLowerLayer(struct packet *pkt)
 {
-    //if (crc32(*pkt) == 0) { // ignore corrupted packets
+    if (crc32(pkt->data + 4, RDT_PKTSIZE - 4) == *(unsigned int *)pkt->data) { // ignore corrupted packets
         unsigned int ack = *(unsigned int *)(pkt->data + 4);
         while (!window.empty() && *(unsigned int *)(window.front().first->data + 4) <= ack) {
             free(window.front().first);
@@ -163,7 +163,7 @@ void Sender_FromLowerLayer(struct packet *pkt)
         }
         update_state();
         send_packet();
-        //}
+    }
 }
 
 /* event handler, called when the timer expires */
