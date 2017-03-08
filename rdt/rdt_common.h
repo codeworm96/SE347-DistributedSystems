@@ -9,7 +9,7 @@
 #define _RDT_COMMON_H_
 
 const unsigned int header_size = 9;
-const unsigned int window_size = 20;
+const unsigned int window_size = 7;
 const double timeout = 0.3;
 unsigned int crc32(char *data, unsigned int len);
 

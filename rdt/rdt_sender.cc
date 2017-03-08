@@ -1,16 +1,12 @@
 /*
  * FILE: rdt_sender.cc
  * DESCRIPTION: Reliable data transfer sender.
- * NOTE: This implementation assumes there is no packet loss, corruption, or 
- *       reordering.  You will need to enhance it to deal with all these 
- *       situations.  In this implementation, the packet format is laid out as 
+ * NOTE: In this implementation, the packet format is laid out as 
  *       the following:
  *
  *       |<-  4 byte  ->|<- 4 byte ->|<- 1 byte ->|<-             the rest            ->|
- *       |<-  CRC32   ->|<-   seq  ->|<-  size  ->|<-             payload             ->|
+ *       |<-  CRC32   ->|<-  seq   ->|<-  size  ->|<-             payload             ->|
  *
- *       The first byte of each packet indicates the size of the payload
- *       (excluding this single-byte header)
  */
 
 
@@ -28,7 +24,7 @@
 static std::deque<message *> pending_msg;
 static std::deque<std::pair<packet *, double> > window;
 static unsigned int seq;
-static double last_update;
+static double span; // current timer span
 
 /* create a packet from pending messages
  * returns NULL if not possible
@@ -39,7 +35,6 @@ packet* create_packet()
         return NULL;
     }
     else {
-        fprintf(stdout, "create packet\n");
         packet *res = (packet *)malloc(sizeof(packet));
         memset(res, 0, sizeof(packet));
         unsigned int off = header_size;
@@ -88,34 +83,15 @@ void send_packet()
         }
         else {
             Sender_ToLowerLayer(pkt);
+            if (!Sender_isTimerSet()) {
+                span = timeout;
+                Sender_StartTimer(timeout);
+            }
             window.push_back(std::make_pair(pkt, timeout));
         }
     }
 }
 
-/*
- * update packet state
- */
-void update_state()
-{
-    double last = last_update;
-    last_update = GetSimulationTime();
-    fprintf(stdout, "time: %lf, %d, %d\n", last_update, pending_msg.size(), window.size());
-    double passed = last_update - last;
-    double min = 10;
-    for (unsigned int i = 0; i < window.size(); ++i) {
-        if (window[i].second <= passed) {
-            Sender_ToLowerLayer(window[i].first); // resend timeout packages
-            window[i].second = timeout;
-        }
-        if (window[i].second < min) {
-            min = window[i].second;
-        }
-    }
-    if (min < 5) {
-        Sender_StartTimer(min);
-    }
-}
 
 /* sender initialization, called once at the very beginning */
 void Sender_Init()
@@ -124,7 +100,7 @@ void Sender_Init()
     pending_msg.clear();
     window.clear();
     seq = 1;
-    last_update = 0.0;
+    span = 0.0;
 }
 
 /* sender finalization, called once at the very end.
@@ -147,7 +123,6 @@ void Sender_FromUpperLayer(struct message *msg)
 
     pending_msg.push_back(m);
 
-    update_state();
     send_packet();
 }
 
@@ -161,7 +136,6 @@ void Sender_FromLowerLayer(struct packet *pkt)
             free(window.front().first);
             window.pop_front();
         }
-        update_state();
         send_packet();
     }
 }
@@ -169,5 +143,20 @@ void Sender_FromLowerLayer(struct packet *pkt)
 /* event handler, called when the timer expires */
 void Sender_Timeout()
 {
-    update_state();
+    double min = 5 * timeout;
+    for (unsigned int i = 0; i < window.size(); ++i) {
+        if (window[i].second <= span) {
+            Sender_ToLowerLayer(window[i].first); // resend timeout packages
+            window[i].second = timeout;
+        } else {
+            window[i].second -= span;
+        }
+        if (window[i].second < min) {
+            min = window[i].second;
+        }
+    }
+    if (min < timeout * 5) {
+        Sender_StartTimer(min);
+        span = min;
+    }
 }

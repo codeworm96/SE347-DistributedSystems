@@ -1,16 +1,12 @@
 /*
  * FILE: rdt_receiver.cc
  * DESCRIPTION: Reliable data transfer receiver.
- * NOTE: This implementation assumes there is no packet loss, corruption, or 
- *       reordering.  You will need to enhance it to deal with all these 
- *       situations.  In this implementation, the packet format is laid out as 
+ * NOTE: In this implementation, the packet format is laid out as 
  *       the following:
  *       
  *       |<-  4 byte  ->|<- 4 byte ->|<- 1 byte ->|<-             the rest            ->|
- *       |<-  CRC32   ->|<-   seq  ->|<-  size  ->|<-             payload             ->|
+ *       |<-  CRC32   ->|<-  seq   ->|<-  size  ->|<-             payload             ->|
  *
- *       The first byte of each packet indicates the size of the payload
- *       (excluding this single-byte header)
  */
 
 
@@ -51,8 +47,7 @@ void Receiver_FromLowerLayer(struct packet *pkt)
 {
     if (crc32(pkt->data + 4, RDT_PKTSIZE - 4) == *(unsigned int *)pkt->data) { // ignore corrupted packets
         unsigned int seq = *(unsigned int *)(pkt->data + 4);
-        fprintf(stdout, "received %d, expect %d\n", seq, expect_seq);
-        if (seq >= expect_seq && seq - expect_seq < window_size) { // select repeat
+        if (seq >= expect_seq && seq - expect_seq < window_size) { // selective repeat
             if (window[seq - expect_seq] == NULL) {
                 packet *p = (packet *)malloc(sizeof(packet));
                 *p = *pkt;
@@ -95,8 +90,5 @@ void Receiver_FromLowerLayer(struct packet *pkt)
             Receiver_ToLowerLayer(ack);
             free(ack);
         }
-    }
-    else {
-        fprintf(stdout, "Corrupted packet\n");
     }
 }
