@@ -53,7 +53,9 @@ void Receiver_FromLowerLayer(struct packet *pkt)
                 *p = *pkt;
                 window[seq - expect_seq] = p;
             }
+            bool ack_changed = false;
             while (window.front()) {
+                ack_changed = true;
                 ++expect_seq;
                 packet *p = window.front();
                 window.pop_front();
@@ -72,14 +74,16 @@ void Receiver_FromLowerLayer(struct packet *pkt)
                 if (msg->data!=NULL) free(msg->data);
                 if (msg!=NULL) free(msg);
             }
-            /* ack */
-            packet *ack = (packet *)malloc(sizeof(packet));
-            memset(ack, 0, sizeof(packet));
-            *(unsigned int *)(ack->data + 4) = expect_seq - 1;
-            unsigned int crc = crc32(ack->data + 4, RDT_PKTSIZE - 4);
-            *(unsigned int *)ack->data = crc;
-            Receiver_ToLowerLayer(ack);
-            free(ack);
+            if (ack_changed) {
+                /* ack */
+                packet *ack = (packet *)malloc(sizeof(packet));
+                memset(ack, 0, sizeof(packet));
+                *(unsigned int *)(ack->data + 4) = expect_seq - 1;
+                unsigned int crc = crc32(ack->data + 4, RDT_PKTSIZE - 4);
+                *(unsigned int *)ack->data = crc;
+                Receiver_ToLowerLayer(ack);
+                free(ack);
+            }
         }
         else if (seq < expect_seq) { // ack is missing
             packet *ack = (packet *)malloc(sizeof(packet));
